@@ -14,8 +14,8 @@
 #define RESET_UPTIME_TIME 30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime 
 #define REST_SERVICE_URL "192.168.1.180"
 #define REST_SERVICE_PORT 3010
-char settingsServiceUri[] = "/boilerBack/v1";
-char intervalLogServiceUri[] = "/boilerBack/v1/intervalLog";
+char settingsServiceUri[] = "settings/boilerBack";
+char intervalLogServiceUri[] = "/intervalLog/boilerBack";
 
 bool isInitialized = false;
 
@@ -25,7 +25,7 @@ double Irms3;
 
 // settings
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-EthernetServer httpServer(80);
+EthernetServer httpServer(40250);
 EthernetClient httpClient;
 
 EnergyMonitor emon1;
@@ -90,6 +90,11 @@ void getSettings() {
   //settingsServiceUri 
   //intervalLogServiceUri
   //ds18Precision
+  ds18Sensors.requestTemperatures();
+  intervalLogServiceTimer.setTimeout(intervalLogServicePeriod);
+  intervalLogServiceTimer.restart();
+  ds18ConversionTimer.setTimeout(DS18_CONVERSION_TIME);
+  ds18ConversionTimer.restart();
   isInitialized = true;
 }
 
@@ -146,7 +151,7 @@ void flowSensorPulseCounter () {
 
 String createDataJsonString() {
   String output;
-  StaticJsonBuffer<100> jsonBuffer;
+  StaticJsonBuffer<200> jsonBuffer;
   JsonObject& jsonDataObject = jsonBuffer.createObject();
   
   jsonDataObject["deviceId"] ="boilerBack";
@@ -166,6 +171,8 @@ String createDataJsonString() {
     ds18JsonDataObject.set( dsAddressToString(deviceAddress), ds18Sensors.getTempC(deviceAddress));
   }
 
+  jsonDataObject.printTo(Serial);
+  Serial.println();
   jsonDataObject.printTo(output);
   return output;
 }

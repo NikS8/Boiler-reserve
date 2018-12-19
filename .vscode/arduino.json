@@ -1,0 +1,7 @@
+{
+    "port": "COM3",
+    "board": "arduino:avr:pro",
+    "configuration": "cpu=16MHzatmega328",
+    "programmer": "ArduinoISP.org",
+    "sketch": "boiler-back.ino"
+}
