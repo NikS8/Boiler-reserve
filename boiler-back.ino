@@ -3,7 +3,6 @@
  * 
  */
 
-#include <ArduinoJson.h>
 #include <Ethernet2.h>
 #include <SPI.h>
 #include <OneWire.h>
@@ -11,17 +10,16 @@
 #include <EmonLib.h>
 #include <RBD_Timer.h>
 
+#define DEVICE_ID 'boilerBack'
+#define VERSION '1'
+
+
 #define RESET_UPTIME_TIME 30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime 
 #define REST_SERVICE_URL "192.168.1.180"
 #define REST_SERVICE_PORT 3010
 char settingsServiceUri[] = "settings/boilerBack";
 char intervalLogServiceUri[] = "/intervalLog/boilerBack";
 
-bool isInitialized = false;
-
-double Irms1;
-double Irms2;
-double Irms3;
 
 // settings
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
@@ -95,17 +93,14 @@ void getSettings() {
   intervalLogServiceTimer.restart();
   ds18ConversionTimer.setTimeout(DS18_CONVERSION_TIME);
   ds18ConversionTimer.restart();
-  isInitialized = true;
 }
 
 void loop() {
   currentTime = millis();
   resetWhen30Days();
 
-  if (isInitialized) {
-    realTimeService(); 
+    realTimeService();
     intrevalLogService();
-  }
 }
 
 void realTimeService() {
@@ -115,7 +110,7 @@ void realTimeService() {
 
   while (reqClient.available()) reqClient.read();
 
-  String data = createDataJsonString();
+  String data = createDataString();
 
   reqClient.println("HTTP/1.1 200 OK");
   reqClient.println("Content-Type: application/json");
@@ -132,7 +127,7 @@ void intrevalLogService() {
   }
 
   if (intervalLogServiceTimer.onRestart()) {
-    String data = createDataJsonString();
+    String data = createDataString();
 
     String response = doRequest(intervalLogServiceUri, data);
     Serial.println(response);
@@ -149,32 +144,19 @@ void flowSensorPulseCounter () {
    flowPulseCount++;
 }
 
-String createDataJsonString() {
-  String output;
-  StaticJsonBuffer<200> jsonBuffer;
-  JsonObject& jsonDataObject = jsonBuffer.createObject();
-  
-  jsonDataObject["deviceId"] ="boilerBack";
-  jsonDataObject["version"] ="0.1";
-
-  jsonDataObject["flowBoilerBack"] = getFlowData();  
-  
-  JsonArray& transDataArray = jsonDataObject.createNestedArray("trans");
-  transDataArray.add(emon1.calcIrms(1480));
-  transDataArray.add(emon2.calcIrms(1480));
-  transDataArray.add(emon3.calcIrms(1480));
-
-  JsonObject& ds18JsonDataObject = jsonDataObject.createNestedObject("ds18");
+String createDataString() {
+  String resultData = String('deviceId:' + DEVICE_ID + '\nversion:' + VERSION);
+  resultData.concat('\nflow-0:' + getFlowData());
+  resultData.concat('\ntrans-1:' + emon1.calcIrms(1480));
+  resultData.concat('\ntrans-2:' + emon2.calcIrms(1480));
+  resultData.concat('\ntrans-3:' + emon3.calcIrms(1480));
   for (uint8_t index = 0; index < ds18DeviceCount; index++) {
-    DeviceAddress deviceAddress;
-    ds18Sensors.getAddress(deviceAddress, index);
-    ds18JsonDataObject.set( dsAddressToString(deviceAddress), ds18Sensors.getTempC(deviceAddress));
-  }
+      DeviceAddress deviceAddress;
+      ds18Sensors.getAddress(deviceAddress, index);
+      resultData.concat('\nds18-' + dsAddressToString(deviceAddress) + ':' + ds18Sensors.getTempC(deviceAddress));
+    }
 
-  jsonDataObject.printTo(Serial);
-  Serial.println();
-  jsonDataObject.printTo(output);
-  return output;
+  return resultData;
 }
 
 // SENSORS 
@@ -208,7 +190,7 @@ String doRequest(char reqUri, String reqData) {
     if (reqData.length()) { // do post request
       httpClient.println((char) "POST" + reqUri + "HTTP/1.1");
       //httpClient.println("Host: checkip.dyndns.com"); // TODO remove if not necessary
-      httpClient.println("Content-Type: application/json;");
+      httpClient.println("Content-Type: application/csv;");
       httpClient.println("Content-Length: " + reqData.length());
       httpClient.println();
       httpClient.print(reqData);
