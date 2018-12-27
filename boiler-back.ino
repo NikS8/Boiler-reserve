@@ -145,7 +145,11 @@ void flowSensorPulseCounter () {
 }
 
 String createDataString() {
-  String resultData = String('deviceId:' + DEVICE_ID + '\nversion:' + VERSION);
+  String resultData;
+  resultData.concat("deviceId:");
+  resultData.concat(DEVICE_ID);
+  resultData.concat("\nversion:");
+  resultData.concat(VERSION);
   resultData.concat('\nflow-0:' + getFlowData());
   resultData.concat('\ntrans-1:' + emon1.calcIrms(1480));
   resultData.concat('\ntrans-2:' + emon2.calcIrms(1480));
