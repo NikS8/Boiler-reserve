@@ -15,7 +15,7 @@
 
 
 #define RESET_UPTIME_TIME 30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime 
-#define REST_SERVICE_URL "192.168.1.180"
+#define REST_SERVICE_URL "192.168.1.210"
 #define REST_SERVICE_PORT 3010
 char settingsServiceUri[] = "settings/boilerBack";
 char intervalLogServiceUri[] = "/intervalLog/boilerBack";
