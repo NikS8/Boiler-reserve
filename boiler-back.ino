@@ -1,7 +1,19 @@
-/*
- * boilerBack scetch
- * 
- */
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+                                                    boilerBack.ino 
+                                Copyright © 2018, Zigfred & Nik.S
+19.12.2018 v1
+03.01.2019 v2 dell <ArduinoJson.h>
+10.01.2019 v3 изменен расчет в YF-B5
+13.01.2019 v4 createDataString в формате json
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*******************************************************************\
+Сервер boilerBack выдает данные: 
+  аналоговые: 
+    датчики трансформаторы тока  
+  цифровые: 
+    датчик скорости потока воды YF-B5
+    датчики температуры DS18B20
+/*******************************************************************/
 
 #include <Ethernet2.h>
 #include <SPI.h>
@@ -11,15 +23,13 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID 'boilerBack'
-#define VERSION '1'
+#define VERSION '4'
 
-
-#define RESET_UPTIME_TIME 30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime 
+#define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
 #define REST_SERVICE_PORT 3010
-char settingsServiceUri[] = "settings/boilerBack";
+char settingsServiceUri[] = "/settings/boilerBack";
 char intervalLogServiceUri[] = "/intervalLog/boilerBack";
-
 
 // settings
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
@@ -38,14 +48,14 @@ uint8_t ds18Precision = 9;
 OneWire ds18wireBus(PIN_ONE_WIRE_BUS);
 DallasTemperature ds18Sensors(&ds18wireBus);
 
-#define PIN_FLOW_SENSOR 2
-#define PIN_INTERRUPT_FLOW_SENSOR 0
-#define FLOW_SENSOR_CALIBRATION_FACTOR 5
-volatile int flowPulseCount;
+byte flowSensorInterrupt = 0; // 0 = digital pin 2
+byte flowSensorPin = 2;
+unsigned long flowSensorLastTime = 0;
+volatile long flowSensorPulseCount = 0;
 
 // time
 unsigned long currentTime;
-unsigned long flowSensorLastTime;
+//unsigned long flowSensorLastTime;
 // settings intervals
 unsigned int intervalLogServicePeriod = 10000;
 // timers
@@ -53,7 +63,11 @@ RBD::Timer intervalLogServiceTimer;
 RBD::Timer ds18ConversionTimer;
 
 // TODO optimize variables data length
-void setup() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+              setup
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void setup()
+{
   Serial.begin(9600);
   Ethernet.begin(mac);
   while (!Serial) continue;
@@ -66,8 +80,9 @@ void setup() {
   emon2.current(2, 8.4);
   emon3.current(3, 8.4);
 
-  pinMode(PIN_FLOW_SENSOR, INPUT);
-  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR, flowSensorPulseCounter, RISING);
+  pinMode(flowSensorPin, INPUT);
+  digitalWrite(flowSensorPin, HIGH);
+  attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, FALLING);
   sei();
 
   httpServer.begin();
@@ -81,7 +96,11 @@ void setup() {
 }
   // TODO create function for request temp and save last request time
 
-void getSettings() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function getSettings
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void getSettings()
+{
   String responseText = doRequest(settingsServiceUri, "");
   // TODO parse settings and fill values to variables
   //intervalLogServicePeriod = 10000;
@@ -95,7 +114,11 @@ void getSettings() {
   ds18ConversionTimer.restart();
 }
 
-void loop() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            loop
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void loop()
+{
   currentTime = millis();
   resetWhen30Days();
 
@@ -103,7 +126,11 @@ void loop() {
     intrevalLogService();
 }
 
-void realTimeService() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function realTimeService
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void realTimeService()
+{
 
   EthernetClient reqClient = httpServer.available();
   if (!reqClient) return;
@@ -121,7 +148,11 @@ void realTimeService() {
   reqClient.stop();
 }
 
-void intrevalLogService() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function intrevalLogService
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void intrevalLogService()
+{
   if (intervalLogServiceTimer.getInverseValue() <= DS18_CONVERSION_TIME) {
     ds18RequestTemperatures();
   }
@@ -134,57 +165,116 @@ void intrevalLogService() {
   }
 }
 
-void ds18RequestTemperatures () {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function ds18RequestTemperatures
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void ds18RequestTemperatures()
+{
   if (ds18ConversionTimer.onRestart()) {
     ds18Sensors.requestTemperatures();
   }
 }
 
-void flowSensorPulseCounter () {
-   flowPulseCount++;
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function flowSensorPulseCounter
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void flowSensorPulseCounter()
+{
+  // Increment the pulse counter
+  flowSensorPulseCount++;
 }
 
-String createDataString() {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function createDataString
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+String createDataString()
+{
   String resultData;
-  resultData.concat("deviceId:");
+
+  uint8_t index;
+  DeviceAddress deviceAddress;
+  ds18Sensors.getAddress(deviceAddress, index);
+  index = 0;
+
+  resultData.concat("{");
+  resultData.concat("\n\"deviceId\":");
   resultData.concat(DEVICE_ID);
-  resultData.concat("\nversion:");
+  resultData.concat(",");
+  resultData.concat("\n\"version\":");
   resultData.concat(VERSION);
-  resultData.concat('\nflow-0:' + getFlowData());
-  resultData.concat('\ntrans-1:' + emon1.calcIrms(1480));
-  resultData.concat('\ntrans-2:' + emon2.calcIrms(1480));
-  resultData.concat('\ntrans-3:' + emon3.calcIrms(1480));
-  for (uint8_t index = 0; index < ds18DeviceCount; index++) {
-      DeviceAddress deviceAddress;
-      ds18Sensors.getAddress(deviceAddress, index);
-      resultData.concat('\nds18-' + dsAddressToString(deviceAddress) + ':' + ds18Sensors.getTempC(deviceAddress));
-    }
+  resultData.concat(",");
+  resultData.concat("\n\"data\": {");
+  resultData.concat("\n\t\"flow-0\":" + String(getFlowData()));
+  resultData.concat(",");
+  resultData.concat("\n\t\"trans\": {");
+  resultData.concat("\n\t\"trans-1\":" + String(emon1.calcIrms(1480)));
+  resultData.concat(",");
+  resultData.concat("\n\t\"trans-2\":" + String(emon2.calcIrms(1480)));
+  resultData.concat(",");
+  resultData.concat("\n\t\"trans-3\":" + String(emon3.calcIrms(1480)));
+  resultData.concat("\n\t}");
+  resultData.concat(",");
+  resultData.concat("\n\t\"ds18\": {");
+  resultData.concat("\n\t\"");
+  resultData.concat(String(dsAddressToString(deviceAddress)) + "\":" + String(ds18Sensors.getTempC(deviceAddress)));
+  for (index = 1; index < ds18DeviceCount; index++)
+  {
+    DeviceAddress deviceAddress;
+    ds18Sensors.getAddress(deviceAddress, index);
+    resultData.concat(",");
+    resultData.concat("\n\t\"");
+    resultData.concat(String(dsAddressToString(deviceAddress)) + "\":" + String(ds18Sensors.getTempC(deviceAddress)));
+  }
+  resultData.concat("\n\t }");
+  resultData.concat("\n\t }");
+  resultData.concat("\n}");
 
   return resultData;
 }
 
-// SENSORS 
-int getFlowData() {
-  static int flowSensorPulsesPerSecond;
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function to measurement flow water
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+int getFlowData()
+{
+  //  static int flowSensorPulsesPerSecond;
+  unsigned long flowSensorPulsesPerSecond;
 
-  if (intervalLogServiceTimer.isActive()) { // just return previous value if there is call not for intervalLogService
-    return flowSensorPulsesPerSecond;
+  unsigned long deltaTime = millis() - flowSensorLastTime;
+  //  if ((millis() - flowSensorLastTime) < 1000) {
+  if (deltaTime < 1000)
+  {
+    return;
   }
 
-  flowSensorPulsesPerSecond = (millis() - flowSensorLastTime) / 1000 * flowPulseCount;
+  detachInterrupt(flowSensorInterrupt);
+  //     flowSensorPulsesPerSecond = (1000 * flowSensorPulseCount / (millis() - flowSensorLastTime));
+  //    flowSensorPulsesPerSecond = (flowSensorPulseCount * 1000 / deltaTime);
+  flowSensorPulsesPerSecond = flowSensorPulseCount;
+  flowSensorPulsesPerSecond *= 1000;
+  flowSensorPulsesPerSecond /= deltaTime; //  количество за секунду
+
   flowSensorLastTime = millis();
-  flowPulseCount = 0;
+  flowSensorPulseCount = 0;
+  attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, FALLING);
 
   return flowSensorPulsesPerSecond;
 }
 
-// UTILS
-void resetWhen30Days () {
-  if (millis() > (RESET_UPTIME_TIME)) {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function resetWhen30Days
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void resetWhen30Days()
+{
+  if (millis() > (RESET_UPTIME_TIME))
+  {
     // do reset
   }
 }
 
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function doRequest
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 String doRequest(char reqUri, String reqData) {
   String responseText;
 
@@ -219,7 +309,11 @@ String doRequest(char reqUri, String reqData) {
   return responseText;
 }
 
-String dsAddressToString(DeviceAddress deviceAddress) {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function dsAddressToString
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+String dsAddressToString(DeviceAddress deviceAddress)
+{
   String address;
   for (uint8_t i = 0; i < 8; i++) {
     if (deviceAddress[i] < 16 ) address += "0";
@@ -228,7 +322,11 @@ String dsAddressToString(DeviceAddress deviceAddress) {
   return address;
 }
 
-bool readRequest(EthernetClient& client) {
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            function readRequest
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+bool readRequest(EthernetClient &client)
+{
   bool currentLineIsBlank = true;
   while (client.connected()) {
     if (client.available()) {
@@ -244,3 +342,7 @@ bool readRequest(EthernetClient& client) {
   }
   return false;
 }
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            the end
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
