@@ -5,6 +5,7 @@
 03.01.2019 v2 dell <ArduinoJson.h>
 10.01.2019 v3 изменен расчет в YF-B5
 13.01.2019 v4 createDataString в формате json
+15.01.2019 v5 дабавлены данные по температуре коллектора
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -23,7 +24,7 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID 'boilerBack'
-#define VERSION '4'
+#define VERSION '5'
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -40,13 +41,16 @@ EnergyMonitor emon1;
 EnergyMonitor emon2;
 EnergyMonitor emon3;
 
-#define PIN_ONE_WIRE_BUS 9
-#define DS18_CONVERSION_TIME 750 / (1 << (12 - ds18Precision))
-unsigned short ds18DeviceCount;
-bool isDS18ParasitePowerModeOn;
-uint8_t ds18Precision = 9;
-OneWire ds18wireBus(PIN_ONE_WIRE_BUS);
-DallasTemperature ds18Sensors(&ds18wireBus);
+#define DS18_CONVERSION_TIME 750 // (1 << (12 - ds18Precision))
+#define PIN8_ONE_WIRE_BUS 8           //  коллектор
+unsigned short ds18DeviceCount8;
+OneWire ds18wireBus8(PIN8_ONE_WIRE_BUS);
+DallasTemperature ds18Sensors8(&ds18wireBus8);
+#define PIN9_ONE_WIRE_BUS 9           //  бойлер
+unsigned short ds18DeviceCount9;
+OneWire ds18wireBus9(PIN9_ONE_WIRE_BUS);
+DallasTemperature ds18Sensors9(&ds18wireBus9);
+uint8_t ds18Precision = 11;
 
 byte flowSensorInterrupt = 0; // 0 = digital pin 2
 byte flowSensorPin = 2;
@@ -87,10 +91,10 @@ void setup()
 
   httpServer.begin();
 
-  ds18Sensors.begin();
-  ds18DeviceCount = ds18Sensors.getDeviceCount();
-  isDS18ParasitePowerModeOn = ds18Sensors.isParasitePowerMode();
-  ds18Sensors.setWaitForConversion(false);
+  ds18Sensors8.begin();
+  ds18DeviceCount8 = ds18Sensors8.getDeviceCount();
+  ds18Sensors9.begin();
+  ds18DeviceCount9 = ds18Sensors9.getDeviceCount();
 
   getSettings();
 }
@@ -107,7 +111,8 @@ void getSettings()
   //settingsServiceUri 
   //intervalLogServiceUri
   //ds18Precision
-  ds18Sensors.requestTemperatures();
+  ds18Sensors8.requestTemperatures();
+  ds18Sensors9.requestTemperatures();
   intervalLogServiceTimer.setTimeout(intervalLogServicePeriod);
   intervalLogServiceTimer.restart();
   ds18ConversionTimer.setTimeout(DS18_CONVERSION_TIME);
@@ -171,7 +176,8 @@ void intrevalLogService()
 void ds18RequestTemperatures()
 {
   if (ds18ConversionTimer.onRestart()) {
-    ds18Sensors.requestTemperatures();
+    ds18Sensors8.requestTemperatures();
+    ds18Sensors9.requestTemperatures();
   }
 }
 
@@ -191,43 +197,68 @@ String createDataString()
 {
   String resultData;
 
-  uint8_t index;
-  DeviceAddress deviceAddress;
-  ds18Sensors.getAddress(deviceAddress, index);
-  index = 0;
-
   resultData.concat("{");
   resultData.concat("\n\"deviceId\":");
-  resultData.concat(DEVICE_ID);
+  resultData.concat("\"boilerBack\"");
   resultData.concat(",");
   resultData.concat("\n\"version\":");
   resultData.concat(VERSION);
   resultData.concat(",");
   resultData.concat("\n\"data\": {");
-  resultData.concat("\n\t\"flow-0\":" + String(getFlowData()));
-  resultData.concat(",");
-  resultData.concat("\n\t\"trans\": {");
-  resultData.concat("\n\t\"trans-1\":" + String(emon1.calcIrms(1480)));
-  resultData.concat(",");
-  resultData.concat("\n\t\"trans-2\":" + String(emon2.calcIrms(1480)));
-  resultData.concat(",");
-  resultData.concat("\n\t\"trans-3\":" + String(emon3.calcIrms(1480)));
-  resultData.concat("\n\t}");
-  resultData.concat(",");
-  resultData.concat("\n\t\"ds18\": {");
-  resultData.concat("\n\t\"");
-  resultData.concat(String(dsAddressToString(deviceAddress)) + "\":" + String(ds18Sensors.getTempC(deviceAddress)));
-  for (index = 1; index < ds18DeviceCount; index++)
+
+  resultData.concat("\n\t\"kollektor\": {");
+  for (uint8_t index8 = 0; index8 < ds18DeviceCount8; index8++)
   {
-    DeviceAddress deviceAddress;
-    ds18Sensors.getAddress(deviceAddress, index);
-    resultData.concat(",");
-    resultData.concat("\n\t\"");
-    resultData.concat(String(dsAddressToString(deviceAddress)) + "\":" + String(ds18Sensors.getTempC(deviceAddress)));
+    DeviceAddress deviceAddress8;
+    ds18Sensors8.getAddress(deviceAddress8, index8);
+    String stringAddr = dsAddressToString(deviceAddress8);
+    resultData.concat("\n\t\t\"");
+    resultData.concat(stringAddr.substring(11));
+    resultData.concat("\":");
+    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+    if (index8 + 1 < ds18DeviceCount8)
+    {
+      resultData.concat(",");
+    }
   }
-  resultData.concat("\n\t }");
-  resultData.concat("\n\t }");
-  resultData.concat("\n}");
+  resultData.concat("\n\t\t }");
+  resultData.concat(",");
+
+  resultData.concat("\n\t\"boiler\": {");
+  for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
+  {
+    DeviceAddress deviceAddress9;
+    ds18Sensors9.getAddress(deviceAddress9, index9);
+    String stringAddr = dsAddressToString(deviceAddress9);
+    resultData.concat("\n\t\t\"");
+    resultData.concat(stringAddr.substring(11));
+    resultData.concat("\":");
+    resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
+    if (index9 + 1 < ds18DeviceCount9)
+    {
+      resultData.concat(",");
+    }
+  }
+  resultData.concat("\n\t\t }");
+  resultData.concat(",");
+
+  resultData.concat("\n\t\"flow\":");
+  resultData.concat(getFlowData());
+  resultData.concat(",");
+
+  resultData.concat("\n\t\"amperage\": {");
+  resultData.concat("\n\t\t\"ten1\":");
+  resultData.concat(String(emon1.calcIrms(1480), 1));
+  resultData.concat(",");
+  resultData.concat("\n\t\t\"ten2\":");
+  resultData.concat(String(emon2.calcIrms(1480), 1));
+  resultData.concat(",");
+  resultData.concat("\n\t\t\"ten3\":");
+  resultData.concat(String(emon3.calcIrms(1480), 1));
+  resultData.concat("\n\t\t }");
+  
+    resultData.concat("\n\t }");
+   resultData.concat("\n}");
 
   return resultData;
 }
