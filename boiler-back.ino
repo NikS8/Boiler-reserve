@@ -6,6 +6,8 @@
 10.01.2019 v3 изменен расчет в YF-B5
 13.01.2019 v4 createDataString в формате json
 15.01.2019 v5 дабавлены данные по температуре коллектора
+16.01.2019 v6 обозначены места расположения датчиков температуры
+17.01.2019 v7 в именах датчиков температуры последние 2 цифры
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -24,7 +26,7 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID 'boilerBack'
-#define VERSION '5'
+#define VERSION '7'
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -201,25 +203,67 @@ String createDataString()
   resultData.concat("\n\"deviceId\":");
   resultData.concat("\"boilerBack\"");
   resultData.concat(",");
-  resultData.concat("\n\"version\":");
-  resultData.concat(VERSION);
-  resultData.concat(",");
-  resultData.concat("\n\"data\": {");
+///  resultData.concat("\n\"version\":");
+///  resultData.concat(VERSION);
+///  resultData.concat(",");
+///  resultData.concat("\n\"data\": {");
 
   resultData.concat("\n\t\"kollektor\": {");
-  for (uint8_t index8 = 0; index8 < ds18DeviceCount8; index8++)
-  {
-    DeviceAddress deviceAddress8;
-    ds18Sensors8.getAddress(deviceAddress8, index8);
+  uint8_t index8;
+  uint8_t numberLine = 1;
+
+  DeviceAddress deviceAddress8;
+  index8 = 3;                   //  датчик на входе в коллектор
+  ds18Sensors8.getAddress(deviceAddress8, index8);
     String stringAddr = dsAddressToString(deviceAddress8);
     resultData.concat("\n\t\t\"");
-    resultData.concat(stringAddr.substring(11));
+    resultData.concat("in");
+    resultData.concat("\ ");
+    resultData.concat(stringAddr.substring(14));  //2 последние цифры №
     resultData.concat("\":");
     resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-    if (index8 + 1 < ds18DeviceCount8)
+        if (ds18DeviceCount8 > 1)
     {
       resultData.concat(",");
     }
+
+    for (index8 = 0; index8 < ds18DeviceCount8; index8++)
+    {
+        ds18Sensors8.getAddress(deviceAddress8, index8);
+      stringAddr = dsAddressToString(deviceAddress8);
+
+      if (index8 == 3)
+      {
+        continue;         //  пропускаем датчик на входе в коллектор
+      }
+
+      resultData.concat("\n\t\t\"");
+
+      if (index8 == 2)    //  отсутствует датчик
+      {
+        resultData.concat("n");
+        resultData.concat(numberLine);
+        resultData.concat("\ ");
+        resultData.concat("\":");
+        resultData.concat("\"пусто\"");
+        resultData.concat(",");
+        resultData.concat("\n\t\t\"");
+        numberLine++;
+      }
+     
+      resultData.concat("n");
+      resultData.concat(numberLine);
+      resultData.concat("\ ");
+      resultData.concat(stringAddr.substring(14));
+      resultData.concat("\":");
+      resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+
+      if (index8 < (ds18DeviceCount8 - 1))
+      {
+        resultData.concat(",");
+      }
+      numberLine++;
+
   }
   resultData.concat("\n\t\t }");
   resultData.concat(",");
@@ -229,36 +273,44 @@ String createDataString()
   {
     DeviceAddress deviceAddress9;
     ds18Sensors9.getAddress(deviceAddress9, index9);
-    String stringAddr = dsAddressToString(deviceAddress9);
+    stringAddr = dsAddressToString(deviceAddress9);
     resultData.concat("\n\t\t\"");
-    resultData.concat(stringAddr.substring(11));
+    if (index9 == 1) {
+      resultData.concat("in ");
+    }
+    else if ((index9 == 0)){
+      resultData.concat("out ");
+    }
+    resultData.concat(stringAddr.substring(14));
     resultData.concat("\":");
     resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
-    if (index9 + 1 < ds18DeviceCount9)
+    if (index9 < ds18DeviceCount9 - 1)
     {
       resultData.concat(",");
     }
   }
   resultData.concat("\n\t\t }");
+  
   resultData.concat(",");
-
-  resultData.concat("\n\t\"flow\":");
-  resultData.concat(getFlowData());
-  resultData.concat(",");
-
   resultData.concat("\n\t\"amperage\": {");
   resultData.concat("\n\t\t\"ten1\":");
-  resultData.concat(String(emon1.calcIrms(1480), 1));
+  resultData.concat(String((float)emon1.calcIrms(1480), 1));
   resultData.concat(",");
   resultData.concat("\n\t\t\"ten2\":");
-  resultData.concat(String(emon2.calcIrms(1480), 1));
+  resultData.concat(String((float)emon2.calcIrms(1480), 1));
   resultData.concat(",");
   resultData.concat("\n\t\t\"ten3\":");
-  resultData.concat(String(emon3.calcIrms(1480), 1));
+  resultData.concat(String((float)emon3.calcIrms(1480), 1));
   resultData.concat("\n\t\t }");
+
+  resultData.concat(",");
+  resultData.concat("\n\t\"flow\":");
+  resultData.concat(getFlowData());
+
+  ///  resultData.concat("\n\t }");
   
-    resultData.concat("\n\t }");
-   resultData.concat("\n}");
+  resultData.concat("\n");
+  resultData.concat("}");
 
   return resultData;
 }
