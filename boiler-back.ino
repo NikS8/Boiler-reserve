@@ -8,6 +8,7 @@
 15.01.2019 v5 дабавлены данные по температуре коллектора
 16.01.2019 v6 обозначены места расположения датчиков температуры
 17.01.2019 v7 в именах датчиков температуры последние 2 цифры
+19.01.2019 v8 нумерация контуров коллектора слева направо  
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -26,7 +27,7 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID 'boilerBack'
-#define VERSION '7'
+#define VERSION '8'
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -210,7 +211,7 @@ String createDataString()
 
   resultData.concat("\n\t\"kollektor\": {");
   uint8_t index8;
-  uint8_t numberLine = 1;
+  uint8_t numberKontur = 1;
 
   DeviceAddress deviceAddress8;
   index8 = 3;                   //  датчик на входе в коллектор
@@ -239,20 +240,20 @@ String createDataString()
 
       resultData.concat("\n\t\t\"");
 
-      if (index8 == 2)    //  отсутствует датчик
+      if (index8 == 6)    //  отсутствует контур и датчик
       {
-        resultData.concat("n");
-        resultData.concat(numberLine);
+        resultData.concat("k");
+        resultData.concat(numberKontur);
         resultData.concat("\ ");
         resultData.concat("\":");
         resultData.concat("\"пусто\"");
         resultData.concat(",");
         resultData.concat("\n\t\t\"");
-        numberLine++;
+        numberKontur++;
       }
      
-      resultData.concat("n");
-      resultData.concat(numberLine);
+      resultData.concat("k");
+      resultData.concat(numberKontur);
       resultData.concat("\ ");
       resultData.concat(stringAddr.substring(14));
       resultData.concat("\":");
@@ -262,8 +263,7 @@ String createDataString()
       {
         resultData.concat(",");
       }
-      numberLine++;
-
+      numberKontur++;
   }
   resultData.concat("\n\t\t }");
   resultData.concat(",");
