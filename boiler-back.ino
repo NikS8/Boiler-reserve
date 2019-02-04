@@ -1,6 +1,6 @@
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
                                                     boilerBack.ino 
-                                Copyright © 2018, Zigfred & Nik.S
+                            Copyright © 2018-2019, Zigfred & Nik.S
 19.12.2018 v1
 03.01.2019 v2 dell <ArduinoJson.h>
 10.01.2019 v3 изменен расчет в YF-B5
@@ -9,6 +9,7 @@
 16.01.2019 v6 обозначены места расположения датчиков температуры
 17.01.2019 v7 в именах датчиков температуры последние 2 цифры
 19.01.2019 v8 нумерация контуров коллектора слева направо  
+03.02.2019 v9 преобразование в формат  F("")
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -27,7 +28,7 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID 'boilerBack'
-#define VERSION '8'
+#define VERSION '9'
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -54,9 +55,15 @@ unsigned short ds18DeviceCount9;
 OneWire ds18wireBus9(PIN9_ONE_WIRE_BUS);
 DallasTemperature ds18Sensors9(&ds18wireBus9);
 uint8_t ds18Precision = 11;
-
+/*
 byte flowSensorInterrupt = 0; // 0 = digital pin 2
 byte flowSensorPin = 2;
+unsigned long flowSensorLastTime = 0;
+volatile long flowSensorPulseCount = 0;
+*/
+#define PIN_FLOW_SENSOR 2
+#define PIN_INTERRUPT_FLOW_SENSOR 0
+#define FLOW_SENSOR_CALIBRATION_FACTOR 5
 unsigned long flowSensorLastTime = 0;
 volatile long flowSensorPulseCount = 0;
 
@@ -86,10 +93,14 @@ void setup()
   emon1.current(1, 8.4);
   emon2.current(2, 8.4);
   emon3.current(3, 8.4);
-
+/*
   pinMode(flowSensorPin, INPUT);
-  digitalWrite(flowSensorPin, HIGH);
-  attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, FALLING);
+ // digitalWrite(flowSensorPin, HIGH);
+  attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, RISING);
+  sei();
+*/
+  pinMode(PIN_FLOW_SENSOR, INPUT);
+  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR, flowSensorPulseCounter, FALLING);
   sei();
 
   httpServer.begin();
@@ -147,9 +158,10 @@ void realTimeService()
 
   String data = createDataString();
 
-  reqClient.println("HTTP/1.1 200 OK");
-  reqClient.println("Content-Type: application/json");
-  reqClient.println("Content-Length: " + data.length());
+  reqClient.println(F("HTTP/1.1 200 OK"));
+  reqClient.println(F("Content-Type: application/json"));
+  reqClient.print(F("Content-Length: "));
+  reqClient.println(data.length());
   reqClient.println();
   reqClient.print(data);
 
@@ -200,16 +212,16 @@ String createDataString()
 {
   String resultData;
 
-  resultData.concat("{");
-  resultData.concat("\n\"deviceId\":");
-  resultData.concat("\"boilerBack\"");
-  resultData.concat(",");
-///  resultData.concat("\n\"version\":");
-///  resultData.concat(VERSION);
-///  resultData.concat(",");
-///  resultData.concat("\n\"data\": {");
+  resultData.concat(F("{"));
+  resultData.concat(F("\n\"deviceId\":"));
+  resultData.concat(F("\"boilerBack\""));
+  resultData.concat(F(","));
+///  resultData.concat(F("\n\"version\":"));
+///  resultData.concat(VERSION));
+///  resultData.concat(F(","));
+///  resultData.concat(F("\n\"data\": {"));
 
-  resultData.concat("\n\t\"kollektor\": {");
+  resultData.concat(F("\n\t\"kollektor\": {"));
   uint8_t index8;
   uint8_t numberKontur = 1;
 
@@ -217,15 +229,15 @@ String createDataString()
   index8 = 3;                   //  датчик на входе в коллектор
   ds18Sensors8.getAddress(deviceAddress8, index8);
     String stringAddr = dsAddressToString(deviceAddress8);
-    resultData.concat("\n\t\t\"");
-    resultData.concat("in");
-    resultData.concat("\ ");
+    resultData.concat(F("\n\t\t\""));
+    resultData.concat(F("in"));
+    resultData.concat(F("\ "));
     resultData.concat(stringAddr.substring(14));  //2 последние цифры №
-    resultData.concat("\":");
+    resultData.concat(F("\":"));
     resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
         if (ds18DeviceCount8 > 1)
     {
-      resultData.concat(",");
+      resultData.concat(F(","));
     }
 
     for (index8 = 0; index8 < ds18DeviceCount8; index8++)
@@ -238,79 +250,77 @@ String createDataString()
         continue;         //  пропускаем датчик на входе в коллектор
       }
 
-      resultData.concat("\n\t\t\"");
+      resultData.concat(F("\n\t\t\""));
 
       if (index8 == 6)    //  отсутствует контур и датчик
       {
-        resultData.concat("k");
+        resultData.concat(F("k"));
         resultData.concat(numberKontur);
-        resultData.concat("\ ");
-        resultData.concat("\":");
-        resultData.concat("\"пусто\"");
-        resultData.concat(",");
-        resultData.concat("\n\t\t\"");
+        resultData.concat(F("\ "));
+        resultData.concat(F("\":"));
+        resultData.concat(F("\" \""));
+        resultData.concat(F(","));
+        resultData.concat(F("\n\t\t\""));
         numberKontur++;
       }
      
-      resultData.concat("k");
+      resultData.concat(F("k"));
       resultData.concat(numberKontur);
-      resultData.concat("\ ");
+      resultData.concat(F("\ "));
       resultData.concat(stringAddr.substring(14));
-      resultData.concat("\":");
+      resultData.concat(F("\":"));
       resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
 
       if (index8 < (ds18DeviceCount8 - 1))
       {
-        resultData.concat(",");
+        resultData.concat(F(","));
       }
       numberKontur++;
   }
-  resultData.concat("\n\t\t }");
-  resultData.concat(",");
+  resultData.concat(F("\n\t\t }"));
+  resultData.concat(F(","));
 
-  resultData.concat("\n\t\"boiler\": {");
+  resultData.concat(F("\n\t\"boiler\": {"));
   for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
   {
     DeviceAddress deviceAddress9;
     ds18Sensors9.getAddress(deviceAddress9, index9);
     stringAddr = dsAddressToString(deviceAddress9);
-    resultData.concat("\n\t\t\"");
+    resultData.concat(F("\n\t\t\""));
     if (index9 == 1) {
-      resultData.concat("in ");
+      resultData.concat(F("in "));
     }
     else if ((index9 == 0)){
-      resultData.concat("out ");
+      resultData.concat(F("out "));
     }
     resultData.concat(stringAddr.substring(14));
-    resultData.concat("\":");
+    resultData.concat(F("\":"));
     resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
     if (index9 < ds18DeviceCount9 - 1)
     {
-      resultData.concat(",");
+      resultData.concat(F(","));
     }
   }
-  resultData.concat("\n\t\t }");
+  resultData.concat(F("\n\t\t }"));
   
-  resultData.concat(",");
-  resultData.concat("\n\t\"amperage\": {");
-  resultData.concat("\n\t\t\"ten1\":");
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\"amperage\": {"));
+  resultData.concat(F("\n\t\t\"ten1\":"));
   resultData.concat(String((float)emon1.calcIrms(1480), 1));
-  resultData.concat(",");
-  resultData.concat("\n\t\t\"ten2\":");
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\t\"ten2\":"));
   resultData.concat(String((float)emon2.calcIrms(1480), 1));
-  resultData.concat(",");
-  resultData.concat("\n\t\t\"ten3\":");
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\t\"ten3\":"));
   resultData.concat(String((float)emon3.calcIrms(1480), 1));
-  resultData.concat("\n\t\t }");
+  resultData.concat(F("\n\t\t }"));
 
-  resultData.concat(",");
-  resultData.concat("\n\t\"flow\":");
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\"flow\":"));
   resultData.concat(getFlowData());
 
-  ///  resultData.concat("\n\t }");
-  
-  resultData.concat("\n");
-  resultData.concat("}");
+  resultData.concat(F("\n"));
+  resultData.concat(F("}"));
 
   return resultData;
 }
@@ -330,7 +340,8 @@ int getFlowData()
     return;
   }
 
-  detachInterrupt(flowSensorInterrupt);
+  //detachInterrupt(flowSensorInterrupt);
+  detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR);
   //     flowSensorPulsesPerSecond = (1000 * flowSensorPulseCount / (millis() - flowSensorLastTime));
   //    flowSensorPulsesPerSecond = (flowSensorPulseCount * 1000 / deltaTime);
   flowSensorPulsesPerSecond = flowSensorPulseCount;
@@ -339,7 +350,8 @@ int getFlowData()
 
   flowSensorLastTime = millis();
   flowSensorPulseCount = 0;
-  attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, FALLING);
+  //attachInterrupt(flowSensorInterrupt, flowSensorPulseCounter, FALLING);
+  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR, flowSensorPulseCounter, FALLING);
 
   return flowSensorPulsesPerSecond;
 }
