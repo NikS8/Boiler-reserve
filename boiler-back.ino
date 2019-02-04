@@ -10,6 +10,8 @@
 17.01.2019 v7 в именах датчиков температуры последние 2 цифры
 19.01.2019 v8 нумерация контуров коллектора слева направо  
 03.02.2019 v9 преобразование в формат  F("")
+04.02.2019 v10 добавлена функция freeRam()
+04.02.2019 v11 добавлены ds18 коллектора
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -27,8 +29,8 @@
 #include <EmonLib.h>
 #include <RBD_Timer.h>
 
-#define DEVICE_ID 'boilerBack'
-#define VERSION '9'
+#define DEVICE_ID "boilerBack"
+#define VERSION 11
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -214,68 +216,89 @@ String createDataString()
 
   resultData.concat(F("{"));
   resultData.concat(F("\n\"deviceId\":"));
+//  resultData.concat(String(DEVICE_ID));
   resultData.concat(F("\"boilerBack\""));
   resultData.concat(F(","));
-///  resultData.concat(F("\n\"version\":"));
-///  resultData.concat(VERSION));
-///  resultData.concat(F(","));
-///  resultData.concat(F("\n\"data\": {"));
+  resultData.concat(F("\n\"version\":"));
+  resultData.concat(VERSION);
+  resultData.concat(F(","));
+  resultData.concat(F("\n\"freeRam\":"));
+  resultData.concat(freeRam());
+  resultData.concat(F(","));
+  ///  resultData.concat(F("\n\"data\": {"));
 
   resultData.concat(F("\n\t\"kollektor\": {"));
   uint8_t index8;
   uint8_t numberKontur = 1;
 
   DeviceAddress deviceAddress8;
-  index8 = 3;                   //  датчик на входе в коллектор
+  index8 = 4; //  датчик на входе в коллектор
   ds18Sensors8.getAddress(deviceAddress8, index8);
-    String stringAddr = dsAddressToString(deviceAddress8);
-    resultData.concat(F("\n\t\t\""));
-    resultData.concat(F("in"));
-    resultData.concat(F("\ "));
-    resultData.concat(stringAddr.substring(14));  //2 последние цифры №
-    resultData.concat(F("\":"));
-    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-        if (ds18DeviceCount8 > 1)
+  String stringAddr = dsAddressToString(deviceAddress8);
+  resultData.concat(F("\n\t\t\""));
+  resultData.concat(F("in"));
+  resultData.concat(F("\ "));
+  resultData.concat(stringAddr.substring(14)); //2 последние цифры №
+  resultData.concat(F("\":"));
+  resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+  if (ds18DeviceCount8 > 1)
+  {
+    resultData.concat(F(","));
+  }
+  index8 = 1; //  датчик на выходе из коллектора
+  ds18Sensors8.getAddress(deviceAddress8, index8);
+  stringAddr = dsAddressToString(deviceAddress8);
+  resultData.concat(F("\n\t\t\""));
+  resultData.concat(F("out"));
+  resultData.concat(F("\ "));
+  resultData.concat(stringAddr.substring(14)); //2 последние цифры №
+  resultData.concat(F("\":"));
+  resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+  if (ds18DeviceCount8 > 1)
+  {
+    resultData.concat(F(","));
+  }
+
+  for (index8 = 0; index8 < ds18DeviceCount8; index8++)
+  {
+    ds18Sensors8.getAddress(deviceAddress8, index8);
+    stringAddr = dsAddressToString(deviceAddress8);
+
+    if (index8 == 1)
     {
-      resultData.concat(F(","));
+      continue; //  пропускаем датчик на входе в коллектор
+    }
+    if (index8 == 4)
+    {
+      continue; //  пропускаем датчик на входе в коллектор
     }
 
-    for (index8 = 0; index8 < ds18DeviceCount8; index8++)
+    resultData.concat(F("\n\t\t\""));
+
+    if (index8 == 7) //  отсутствует контур и датчик
     {
-        ds18Sensors8.getAddress(deviceAddress8, index8);
-      stringAddr = dsAddressToString(deviceAddress8);
-
-      if (index8 == 3)
-      {
-        continue;         //  пропускаем датчик на входе в коллектор
-      }
-
-      resultData.concat(F("\n\t\t\""));
-
-      if (index8 == 6)    //  отсутствует контур и датчик
-      {
-        resultData.concat(F("k"));
-        resultData.concat(numberKontur);
-        resultData.concat(F("\ "));
-        resultData.concat(F("\":"));
-        resultData.concat(F("\" \""));
-        resultData.concat(F(","));
-        resultData.concat(F("\n\t\t\""));
-        numberKontur++;
-      }
-     
       resultData.concat(F("k"));
       resultData.concat(numberKontur);
       resultData.concat(F("\ "));
-      resultData.concat(stringAddr.substring(14));
       resultData.concat(F("\":"));
-      resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-
-      if (index8 < (ds18DeviceCount8 - 1))
-      {
-        resultData.concat(F(","));
-      }
+      resultData.concat(F("\" \""));
+      resultData.concat(F(","));
+      resultData.concat(F("\n\t\t\""));
       numberKontur++;
+    }
+
+    resultData.concat(F("k"));
+    resultData.concat(numberKontur);
+    resultData.concat(F("\ "));
+    resultData.concat(stringAddr.substring(14));
+    resultData.concat(F("\":"));
+    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+
+    if (index8 < (ds18DeviceCount8 - 1))
+    {
+      resultData.concat(F(","));
+    }
+    numberKontur++;
   }
   resultData.concat(F("\n\t\t }"));
   resultData.concat(F(","));
@@ -439,5 +462,14 @@ bool readRequest(EthernetClient &client)
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            the end
+            Количество свободной памяти
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+int freeRam()
+{
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            end
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
