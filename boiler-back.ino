@@ -14,6 +14,7 @@
 04.02.2019 v11 добавлены ds18 коллектора
 04.02.2019 v12 добавленa "data"
 06.02.2019 v13 переменным добавлен префикс "boiler-back-"
+06.02.2019 v14 изменение вывода №№ DS18 и префикс заменен на "bb-"
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -32,7 +33,7 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID "boiler-back"
-#define VERSION 13
+#define VERSION 14
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -45,6 +46,9 @@ byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 EthernetServer httpServer(40250);
 EthernetClient httpClient;
 
+#define PIN_TRANS_1 A1
+#define PIN_TRANS_2 A2
+#define PIN_TRANS_3 A3
 EnergyMonitor emon1;
 EnergyMonitor emon2;
 EnergyMonitor emon3;
@@ -90,9 +94,9 @@ void setup()
   Ethernet.begin(mac);
   while (!Serial) continue;
 
-  pinMode( A1, INPUT );
-  pinMode( A2, INPUT );
-  pinMode( A3, INPUT );
+  pinMode(PIN_TRANS_1, INPUT);
+  pinMode(PIN_TRANS_2, INPUT);
+  pinMode(PIN_TRANS_3, INPUT);
 
   emon1.current(1, 8.4);
   emon2.current(2, 8.4);
@@ -227,13 +231,13 @@ String createDataString()
   resultData.concat(F(","));
   resultData.concat(F("\n\"data\": {"));
 
-  resultData.concat(F("\n\t\"boiler-back-trans-1\":"));
+  resultData.concat(F("\n\t\"bb-trans-1\":"));
   resultData.concat(String((float)emon1.calcIrms(1480), 1));
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"boiler-back-trans-2\":"));
+  resultData.concat(F("\n\t\"bb-trans-2\":"));
   resultData.concat(String((float)emon2.calcIrms(1480), 1));
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"boiler-back-trans-3\":"));
+  resultData.concat(F("\n\t\"bb-trans-3\":"));
   resultData.concat(String((float)emon3.calcIrms(1480), 1));
 
   resultData.concat(F(","));
@@ -241,9 +245,13 @@ String createDataString()
   {
     DeviceAddress deviceAddress9;
     ds18Sensors9.getAddress(deviceAddress9, index9);
-    String stringAddr = dsAddressToString(deviceAddress9);
     resultData.concat(F("\n\t\""));
-    resultData.concat(stringAddr);
+    for (uint8_t i = 0; i < 8; i++)
+    {
+      if (deviceAddress9[i] < 16) resultData.concat("0");
+
+      resultData.concat(String(deviceAddress9[i], HEX));
+    }
     resultData.concat(F("\":"));
     resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
     resultData.concat(F(","));
@@ -253,15 +261,19 @@ String createDataString()
   {
     DeviceAddress deviceAddress8;
     ds18Sensors8.getAddress(deviceAddress8, index8);
-    String stringAddr = dsAddressToString(deviceAddress8);
-    resultData.concat(F("\n\t\""));
-     resultData.concat(stringAddr);
+        resultData.concat(F("\n\t\""));
+    for (uint8_t i = 0; i < 8; i++)
+    {
+      if (deviceAddress8[i] < 16) resultData.concat("0");
+
+      resultData.concat(String(deviceAddress8[i], HEX));
+    }
     resultData.concat(F("\":"));
     resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
     resultData.concat(F(","));
   }
    
-  resultData.concat(F("\n\t\"boiler-back-flow\":"));
+  resultData.concat(F("\n\t\"bb-flow\":"));
   resultData.concat(getFlowData());
   resultData.concat(F("\n\t }"));
   resultData.concat(F(","));
@@ -350,19 +362,6 @@ String doRequest(char reqUri, String reqData) {
   }
 
   return responseText;
-}
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            function dsAddressToString
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-String dsAddressToString(DeviceAddress deviceAddress)
-{
-  String address;
-  for (uint8_t i = 0; i < 8; i++) {
-    if (deviceAddress[i] < 16 ) address += "0";
-    address += String(deviceAddress[i], HEX);
-  }
-  return address;
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
