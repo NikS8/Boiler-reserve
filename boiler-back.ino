@@ -12,6 +12,8 @@
 03.02.2019 v9 преобразование в формат  F("")
 04.02.2019 v10 добавлена функция freeRam()
 04.02.2019 v11 добавлены ds18 коллектора
+04.02.2019 v12 добавленa "data"
+06.02.2019 v13 переменным добавлен префикс "boiler-back-"
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -29,8 +31,8 @@
 #include <EmonLib.h>
 #include <RBD_Timer.h>
 
-#define DEVICE_ID "boilerBack"
-#define VERSION 11
+#define DEVICE_ID "boiler-back"
+#define VERSION 13
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
 #define REST_SERVICE_URL "192.168.1.210"
@@ -66,12 +68,12 @@ volatile long flowSensorPulseCount = 0;
 #define PIN_FLOW_SENSOR 2
 #define PIN_INTERRUPT_FLOW_SENSOR 0
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
-unsigned long flowSensorLastTime = 0;
+//unsigned long flowSensorLastTime = 0;
 volatile long flowSensorPulseCount = 0;
 
 // time
 unsigned long currentTime;
-//unsigned long flowSensorLastTime;
+unsigned long flowSensorLastTime;
 // settings intervals
 unsigned int intervalLogServicePeriod = 10000;
 // timers
@@ -217,133 +219,56 @@ String createDataString()
   resultData.concat(F("{"));
   resultData.concat(F("\n\"deviceId\":"));
 //  resultData.concat(String(DEVICE_ID));
-  resultData.concat(F("\"boilerBack\""));
-  resultData.concat(F(","));
+  resultData.concat(F("\"boiler-back\""));
+/*  resultData.concat(F(","));
   resultData.concat(F("\n\"version\":"));
   resultData.concat(VERSION);
+*/
   resultData.concat(F(","));
-  resultData.concat(F("\n\"freeRam\":"));
-  resultData.concat(freeRam());
+  resultData.concat(F("\n\"data\": {"));
+
+  resultData.concat(F("\n\t\"boiler-back-trans-1\":"));
+  resultData.concat(String((float)emon1.calcIrms(1480), 1));
   resultData.concat(F(","));
-  ///  resultData.concat(F("\n\"data\": {"));
-
-  resultData.concat(F("\n\t\"kollektor\": {"));
-  uint8_t index8;
-  uint8_t numberKontur = 1;
-
-  DeviceAddress deviceAddress8;
-  index8 = 4; //  датчик на входе в коллектор
-  ds18Sensors8.getAddress(deviceAddress8, index8);
-  String stringAddr = dsAddressToString(deviceAddress8);
-  resultData.concat(F("\n\t\t\""));
-  resultData.concat(F("in"));
-  resultData.concat(F("\ "));
-  resultData.concat(stringAddr.substring(14)); //2 последние цифры №
-  resultData.concat(F("\":"));
-  resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-  if (ds18DeviceCount8 > 1)
-  {
-    resultData.concat(F(","));
-  }
-  index8 = 1; //  датчик на выходе из коллектора
-  ds18Sensors8.getAddress(deviceAddress8, index8);
-  stringAddr = dsAddressToString(deviceAddress8);
-  resultData.concat(F("\n\t\t\""));
-  resultData.concat(F("out"));
-  resultData.concat(F("\ "));
-  resultData.concat(stringAddr.substring(14)); //2 последние цифры №
-  resultData.concat(F("\":"));
-  resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-  if (ds18DeviceCount8 > 1)
-  {
-    resultData.concat(F(","));
-  }
-
-  for (index8 = 0; index8 < ds18DeviceCount8; index8++)
-  {
-    ds18Sensors8.getAddress(deviceAddress8, index8);
-    stringAddr = dsAddressToString(deviceAddress8);
-
-    if (index8 == 1)
-    {
-      continue; //  пропускаем датчик на входе в коллектор
-    }
-    if (index8 == 4)
-    {
-      continue; //  пропускаем датчик на входе в коллектор
-    }
-
-    resultData.concat(F("\n\t\t\""));
-
-    if (index8 == 7) //  отсутствует контур и датчик
-    {
-      resultData.concat(F("k"));
-      resultData.concat(numberKontur);
-      resultData.concat(F("\ "));
-      resultData.concat(F("\":"));
-      resultData.concat(F("\" \""));
-      resultData.concat(F(","));
-      resultData.concat(F("\n\t\t\""));
-      numberKontur++;
-    }
-
-    resultData.concat(F("k"));
-    resultData.concat(numberKontur);
-    resultData.concat(F("\ "));
-    resultData.concat(stringAddr.substring(14));
-    resultData.concat(F("\":"));
-    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-
-    if (index8 < (ds18DeviceCount8 - 1))
-    {
-      resultData.concat(F(","));
-    }
-    numberKontur++;
-  }
-  resultData.concat(F("\n\t\t }"));
+  resultData.concat(F("\n\t\"boiler-back-trans-2\":"));
+  resultData.concat(String((float)emon2.calcIrms(1480), 1));
   resultData.concat(F(","));
+  resultData.concat(F("\n\t\"boiler-back-trans-3\":"));
+  resultData.concat(String((float)emon3.calcIrms(1480), 1));
 
-  resultData.concat(F("\n\t\"boiler\": {"));
+  resultData.concat(F(","));
   for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
   {
     DeviceAddress deviceAddress9;
     ds18Sensors9.getAddress(deviceAddress9, index9);
-    stringAddr = dsAddressToString(deviceAddress9);
-    resultData.concat(F("\n\t\t\""));
-    if (index9 == 1) {
-      resultData.concat(F("in "));
-    }
-    else if ((index9 == 0)){
-      resultData.concat(F("out "));
-    }
-    resultData.concat(stringAddr.substring(14));
+    String stringAddr = dsAddressToString(deviceAddress9);
+    resultData.concat(F("\n\t\""));
+    resultData.concat(stringAddr);
     resultData.concat(F("\":"));
     resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
-    if (index9 < ds18DeviceCount9 - 1)
-    {
-      resultData.concat(F(","));
-    }
+    resultData.concat(F(","));
   }
-  resultData.concat(F("\n\t\t }"));
-  
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"amperage\": {"));
-  resultData.concat(F("\n\t\t\"ten1\":"));
-  resultData.concat(String((float)emon1.calcIrms(1480), 1));
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\t\"ten2\":"));
-  resultData.concat(String((float)emon2.calcIrms(1480), 1));
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\t\"ten3\":"));
-  resultData.concat(String((float)emon3.calcIrms(1480), 1));
-  resultData.concat(F("\n\t\t }"));
 
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"flow\":"));
+  for (uint8_t index8 = 0; index8 < ds18DeviceCount8; index8++)
+  {
+    DeviceAddress deviceAddress8;
+    ds18Sensors8.getAddress(deviceAddress8, index8);
+    String stringAddr = dsAddressToString(deviceAddress8);
+    resultData.concat(F("\n\t\""));
+     resultData.concat(stringAddr);
+    resultData.concat(F("\":"));
+    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
+    resultData.concat(F(","));
+  }
+   
+  resultData.concat(F("\n\t\"boiler-back-flow\":"));
   resultData.concat(getFlowData());
-
-  resultData.concat(F("\n"));
-  resultData.concat(F("}"));
+  resultData.concat(F("\n\t }"));
+  resultData.concat(F(","));
+  resultData.concat(F("\n\"freeRam\":"));
+  resultData.concat(freeRam());
+  resultData.concat(F("\n }"));
+ // resultData.concat(F("}"));
 
   return resultData;
 }
