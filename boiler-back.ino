@@ -77,6 +77,9 @@ volatile long flowSensorPulseCount = 0;
 
 // time
 unsigned long currentTime;
+unsigned long requestTimeTrans;
+unsigned long requestTimeDS18;
+unsigned long requestTime; 
 unsigned long flowSensorLastTime;
 // settings intervals
 unsigned int intervalLogServicePeriod = 10000;
@@ -161,7 +164,7 @@ void realTimeService()
 
   EthernetClient reqClient = httpServer.available();
   if (!reqClient) return;
-
+  currentTime = millis();
   while (reqClient.available()) reqClient.read();
 
   String data = createDataString();
@@ -174,6 +177,7 @@ void realTimeService()
   reqClient.print(data);
 
   reqClient.stop();
+  requestTime = millis() - currentTime;
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
@@ -239,7 +243,12 @@ String createDataString()
   resultData.concat(F(","));
   resultData.concat(F("\n\t\"bb-trans-3\":"));
   resultData.concat(String((float)emon3.calcIrms(1480), 1));
-
+  
+  resultData.concat(F(","));
+  requestTimeTrans = millis() - currentTime;
+  resultData.concat(F("\n\"bb-timeTrans\":"));
+  resultData.concat(requestTimeTrans);
+  
   resultData.concat(F(","));
   for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
   {
@@ -272,9 +281,16 @@ String createDataString()
     resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
     resultData.concat(F(","));
   }
-   
+  requestTimeDS18 = millis() - currentTime - requestTimeTrans;
+  resultData.concat(F("\n\"bb-timeDS\":"));
+  resultData.concat(requestTimeDS18);
+  
+  resultData.concat(F(","));
   resultData.concat(F("\n\t\"bb-flow\":"));
   resultData.concat(getFlowData());
+  resultData.concat(F(","));
+  resultData.concat(F("\n\"bb-requestTime\":"));
+  resultData.concat(requestTime);
   resultData.concat(F("\n\t }"));
   resultData.concat(F(","));
   resultData.concat(F("\n\"freeRam\":"));
