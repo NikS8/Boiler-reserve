@@ -15,6 +15,7 @@
 04.02.2019 v12 добавленa "data"
 06.02.2019 v13 переменным добавлен префикс "boiler-back-"
 06.02.2019 v14 изменение вывода №№ DS18 и префикс заменен на "bb-"
+07.02.2019 v15 удалено все по логсервису
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер boilerBack выдает данные: 
@@ -44,7 +45,7 @@ char intervalLogServiceUri[] = "/intervalLog/boilerBack";
 // settings
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 EthernetServer httpServer(40250);
-EthernetClient httpClient;
+//EthernetClient httpClient;
 
 #define PIN_TRANS_1 A1
 #define PIN_TRANS_2 A2
@@ -130,7 +131,7 @@ void setup()
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void getSettings()
 {
-  String responseText = doRequest(settingsServiceUri, "");
+
   // TODO parse settings and fill values to variables
   //intervalLogServicePeriod = 10000;
   //settingsServiceUri 
@@ -149,11 +150,10 @@ void getSettings()
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void loop()
 {
-  currentTime = millis();
+//  currentTime = millis();
   resetWhen30Days();
 
     realTimeService();
-    intrevalLogService();
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
@@ -178,23 +178,6 @@ void realTimeService()
 
   reqClient.stop();
   requestTime = millis() - currentTime;
-}
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            function intrevalLogService
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void intrevalLogService()
-{
-  if (intervalLogServiceTimer.getInverseValue() <= DS18_CONVERSION_TIME) {
-    ds18RequestTemperatures();
-  }
-
-  if (intervalLogServiceTimer.onRestart()) {
-    String data = createDataString();
-
-    String response = doRequest(intervalLogServiceUri, data);
-    Serial.println(response);
-  }
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
@@ -341,64 +324,6 @@ void resetWhen30Days()
   {
     // do reset
   }
-}
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            function doRequest
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-String doRequest(char reqUri, String reqData) {
-  String responseText;
-
-  if (httpClient.connect(REST_SERVICE_URL, REST_SERVICE_PORT)) {  //starts client connection, checks for connection
-    Serial.println("connected");
-
-    if (reqData.length()) { // do post request
-      httpClient.println((char) "POST" + reqUri + "HTTP/1.1");
-      //httpClient.println("Host: checkip.dyndns.com"); // TODO remove if not necessary
-      httpClient.println("Content-Type: application/csv;");
-      httpClient.println("Content-Length: " + reqData.length());
-      httpClient.println();
-      httpClient.print(reqData);
-    } else { // do get request
-      httpClient.println( (char) "GET" +  reqUri + "HTTP/1.1");
-      //httpClient.println("Host: checkip.dyndns.com"); // TODO remove if not necessary
-      httpClient.println("Connection: close");  //close 1.1 persistent connection  
-      httpClient.println(); //end of get request
-    }
-  } else {
-    Serial.println("connection failed"); //error message if no client connect
-    Serial.println();
-  }
-
-  while (httpClient.connected() && !httpClient.available()) {
-    delay(1);
-  } //waits for data
-  while (httpClient.connected() || httpClient.available()) { //connected or data available
-    responseText += httpClient.read(); //places captured byte in readString
-  }
-
-  return responseText;
-}
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            function readRequest
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-bool readRequest(EthernetClient &client)
-{
-  bool currentLineIsBlank = true;
-  while (client.connected()) {
-    if (client.available()) {
-      char c = client.read();
-      if (c == '\n' && currentLineIsBlank) {
-        return true;
-      } else if (c == '\n') {
-        currentLineIsBlank = true;
-      } else if (c != '\r') {
-        currentLineIsBlank = false;
-      }
-    }
-  }
-  return false;
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
