@@ -1,6 +1,6 @@
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-                                                    boilerBack.ino 
-                            Copyright © 2018-2019, Zigfred & Nik.S
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+                                                                boilerBack.ino 
+                                        Copyright © 2018-2019, Zigfred & Nik.S
 19.12.2018 v1
 03.01.2019 v2 dell <ArduinoJson.h>
 10.01.2019 v3 изменен расчет в YF-B5
@@ -16,36 +16,32 @@
 06.02.2019 v13 переменным добавлен префикс "boiler-back-"
 06.02.2019 v14 изменение вывода №№ DS18 и префикс заменен на "bb-"
 07.02.2019 v15 удалено все по логсервису
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-/*******************************************************************\
+22.02.2019 v16 dell requestTime
+09.03.2019 v17 новая плата и новые трансформаторы тока (откалиброваны)
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+/*****************************************************************************\
 Сервер boilerBack выдает данные: 
   аналоговые: 
     датчики трансформаторы тока  
   цифровые: 
     датчик скорости потока воды YF-B5
     датчики температуры DS18B20
-/*******************************************************************/
+/*****************************************************************************/
 
 #include <Ethernet2.h>
-#include <SPI.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <EmonLib.h>
 #include <RBD_Timer.h>
 
 #define DEVICE_ID "boiler-back"
-#define VERSION 14
+#define VERSION 17
 
-#define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 // reset after 30 days uptime
-#define REST_SERVICE_URL "192.168.1.210"
-#define REST_SERVICE_PORT 3010
-char settingsServiceUri[] = "/settings/boilerBack";
-char intervalLogServiceUri[] = "/intervalLog/boilerBack";
+#define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 
+// reset after 30 days uptime
 
-// settings
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 EthernetServer httpServer(40250);
-//EthernetClient httpClient;
 
 #define PIN_TRANS_1 A1
 #define PIN_TRANS_2 A2
@@ -64,34 +60,22 @@ unsigned short ds18DeviceCount9;
 OneWire ds18wireBus9(PIN9_ONE_WIRE_BUS);
 DallasTemperature ds18Sensors9(&ds18wireBus9);
 uint8_t ds18Precision = 11;
-/*
-byte flowSensorInterrupt = 0; // 0 = digital pin 2
-byte flowSensorPin = 2;
-unsigned long flowSensorLastTime = 0;
-volatile long flowSensorPulseCount = 0;
-*/
+
 #define PIN_FLOW_SENSOR 2
 #define PIN_INTERRUPT_FLOW_SENSOR 0
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
-//unsigned long flowSensorLastTime = 0;
+unsigned long flowSensorLastTime = 0;
 volatile long flowSensorPulseCount = 0;
 
 // time
 unsigned long currentTime;
-unsigned long requestTimeTrans;
-unsigned long requestTimeDS18;
-unsigned long requestTime; 
-unsigned long flowSensorLastTime;
-// settings intervals
-unsigned int intervalLogServicePeriod = 10000;
 // timers
-RBD::Timer intervalLogServiceTimer;
 RBD::Timer ds18ConversionTimer;
 
 // TODO optimize variables data length
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
               setup
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void setup()
 {
   Serial.begin(9600);
@@ -102,9 +86,9 @@ void setup()
   pinMode(PIN_TRANS_2, INPUT);
   pinMode(PIN_TRANS_3, INPUT);
 
-  emon1.current(1, 8.4);
-  emon2.current(2, 8.4);
-  emon3.current(3, 8.4);
+  emon1.current(1, 8.8);
+  emon2.current(2, 8.8);
+  emon3.current(3, 8.8);
 /*
   pinMode(flowSensorPin, INPUT);
  // digitalWrite(flowSensorPin, HIGH);
@@ -126,44 +110,36 @@ void setup()
 }
   // TODO create function for request temp and save last request time
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function getSettings
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void getSettings()
 {
-
-  // TODO parse settings and fill values to variables
-  //intervalLogServicePeriod = 10000;
-  //settingsServiceUri 
-  //intervalLogServiceUri
-  //ds18Precision
   ds18Sensors8.requestTemperatures();
   ds18Sensors9.requestTemperatures();
-  intervalLogServiceTimer.setTimeout(intervalLogServicePeriod);
-  intervalLogServiceTimer.restart();
   ds18ConversionTimer.setTimeout(DS18_CONVERSION_TIME);
   ds18ConversionTimer.restart();
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             loop
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void loop()
 {
 //  currentTime = millis();
   resetWhen30Days();
 
-    realTimeService();
+  realTimeService();
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function realTimeService
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void realTimeService()
-{
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void realTimeService()  {
 
   EthernetClient reqClient = httpServer.available();
   if (!reqClient) return;
+  ds18RequestTemperatures();
   currentTime = millis();
   while (reqClient.available()) reqClient.read();
 
@@ -177,12 +153,11 @@ void realTimeService()
   reqClient.print(data);
 
   reqClient.stop();
-  requestTime = millis() - currentTime;
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function ds18RequestTemperatures
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void ds18RequestTemperatures()
 {
   if (ds18ConversionTimer.onRestart()) {
@@ -191,18 +166,18 @@ void ds18RequestTemperatures()
   }
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function flowSensorPulseCounter
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void flowSensorPulseCounter()
 {
   // Increment the pulse counter
   flowSensorPulseCount++;
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function createDataString
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 String createDataString()
 {
   String resultData;
@@ -211,10 +186,10 @@ String createDataString()
   resultData.concat(F("\n\"deviceId\":"));
 //  resultData.concat(String(DEVICE_ID));
   resultData.concat(F("\"boiler-back\""));
-/*  resultData.concat(F(","));
+  resultData.concat(F(","));
   resultData.concat(F("\n\"version\":"));
   resultData.concat(VERSION);
-*/
+
   resultData.concat(F(","));
   resultData.concat(F("\n\"data\": {"));
 
@@ -226,11 +201,6 @@ String createDataString()
   resultData.concat(F(","));
   resultData.concat(F("\n\t\"bb-trans-3\":"));
   resultData.concat(String((float)emon3.calcIrms(1480), 1));
-  
-  resultData.concat(F(","));
-  requestTimeTrans = millis() - currentTime;
-  resultData.concat(F("\n\"bb-timeTrans\":"));
-  resultData.concat(requestTimeTrans);
   
   resultData.concat(F(","));
   for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
@@ -264,16 +234,10 @@ String createDataString()
     resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
     resultData.concat(F(","));
   }
-  requestTimeDS18 = millis() - currentTime - requestTimeTrans;
-  resultData.concat(F("\n\"bb-timeDS\":"));
-  resultData.concat(requestTimeDS18);
   
-  resultData.concat(F(","));
   resultData.concat(F("\n\t\"bb-flow\":"));
   resultData.concat(getFlowData());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\"bb-requestTime\":"));
-  resultData.concat(requestTime);
+  
   resultData.concat(F("\n\t }"));
   resultData.concat(F(","));
   resultData.concat(F("\n\"freeRam\":"));
@@ -284,9 +248,9 @@ String createDataString()
   return resultData;
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function to measurement flow water
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 int getFlowData()
 {
   //  static int flowSensorPulsesPerSecond;
@@ -301,8 +265,6 @@ int getFlowData()
 
   //detachInterrupt(flowSensorInterrupt);
   detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR);
-  //     flowSensorPulsesPerSecond = (1000 * flowSensorPulseCount / (millis() - flowSensorLastTime));
-  //    flowSensorPulsesPerSecond = (flowSensorPulseCount * 1000 / deltaTime);
   flowSensorPulsesPerSecond = flowSensorPulseCount;
   flowSensorPulsesPerSecond *= 1000;
   flowSensorPulsesPerSecond /= deltaTime; //  количество за секунду
@@ -315,9 +277,9 @@ int getFlowData()
   return flowSensorPulsesPerSecond;
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             function resetWhen30Days
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void resetWhen30Days()
 {
   if (millis() > (RESET_UPTIME_TIME))
@@ -326,15 +288,15 @@ void resetWhen30Days()
   }
 }
 
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             Количество свободной памяти
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 int freeRam()
 {
   extern int __heap_start, *__brkval;
   int v;
   return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
 }
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             end
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
