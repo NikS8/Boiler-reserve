@@ -18,6 +18,7 @@
 07.02.2019 v15 удалено все по логсервису
 22.02.2019 v16 dell requestTime
 09.03.2019 v17 новая плата и новые трансформаторы тока (откалиброваны)
+10.03.2019 v18 время работы после включения
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*****************************************************************************\
 Сервер boilerBack выдает данные: 
@@ -35,11 +36,10 @@
 #include <RBD_Timer.h>
 
 #define DEVICE_ID "boiler-back"
-#define VERSION 17
+#define VERSION 18
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 
-// reset after 30 days uptime
-
+                                      // reset after 30 days uptime
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 EthernetServer httpServer(40250);
 
@@ -242,7 +242,9 @@ String createDataString()
   resultData.concat(F(","));
   resultData.concat(F("\n\"freeRam\":"));
   resultData.concat(freeRam());
-  resultData.concat(F("\n }"));
+  resultData.concat(F(",\n\"upTime\":\""));
+  resultData.concat(upTime(millis()));
+  resultData.concat(F("\"\n }"));
  // resultData.concat(F("}"));
 
   return resultData;
@@ -286,6 +288,35 @@ void resetWhen30Days()
   {
     // do reset
   }
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            Время работы после старта или рестарта
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+String upTime(uint32_t lasttime)
+{
+  lasttime /= 1000;
+  String lastStartTime;
+  
+  if (lasttime > 86400) {
+    uint8_t lasthour = lasttime/86400;
+    lastStartTime.concat(lasthour);
+    lastStartTime.concat(F("d "));
+    lasttime = (lasttime-(86400*lasthour));
+  }
+  if (lasttime > 3600) {
+    if (lasttime/3600<10) { lastStartTime.concat(F("0")); }
+  lastStartTime.concat(lasttime/3600);
+  lastStartTime.concat(F(":"));
+  }
+  if (lasttime/60%60<10) { lastStartTime.concat(F("0")); }
+lastStartTime.concat((lasttime/60)%60);
+lastStartTime.concat(F(":"));
+  if (lasttime%60<10) { lastStartTime.concat(F("0")); }
+lastStartTime.concat(lasttime%60);
+//lastStartTime.concat(F("s"));
+
+return lastStartTime;
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
