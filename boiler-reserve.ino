@@ -1,5 +1,5 @@
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-                                                                boilerBack.ino 
+                                                            boiler-reserve.ino 
                                         Copyright © 2018-2019, Zigfred & Nik.S
 19.12.2018 v1
 03.01.2019 v2 dell <ArduinoJson.h>
@@ -19,6 +19,7 @@
 22.02.2019 v16 dell requestTime
 09.03.2019 v17 новая плата и новые трансформаторы тока (откалиброваны)
 10.03.2019 v18 время работы после включения
+13.11.2019 v19 переход на статические IP и префикс заменен на "br-"
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*****************************************************************************\
 Сервер boilerBack выдает данные: 
@@ -35,13 +36,15 @@
 #include <EmonLib.h>
 #include <RBD_Timer.h>
 
-#define DEVICE_ID "boiler-back"
-#define VERSION 18
+#define DEVICE_ID "boiler-reserve"
+#define VERSION 19
 
 #define RESET_UPTIME_TIME 2592000000  //  =30 * 24 * 60 * 60 * 1000 
                                       // reset after 30 days uptime
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-EthernetServer httpServer(40250);
+byte mac[] = {0xCA, 0x74, 0xC0, 0xFF, 0xBE, 0x01};
+IPAddress ip(192, 168, 1, 112);
+EthernetServer httpServer(40112); // Ethernet server
+
 
 #define PIN_TRANS_1 A1
 #define PIN_TRANS_2 A2
@@ -79,8 +82,15 @@ RBD::Timer ds18ConversionTimer;
 void setup()
 {
   Serial.begin(9600);
-  Ethernet.begin(mac);
-  while (!Serial) continue;
+  Serial.println("Serial.begin(9600)"); 
+
+  Ethernet.begin(mac,ip);
+  
+  Serial.println(F("Server is ready."));
+  Serial.print(F("Please connect to http://"));
+  Serial.println(Ethernet.localIP());
+  
+  httpServer.begin();
 
   pinMode(PIN_TRANS_1, INPUT);
   pinMode(PIN_TRANS_2, INPUT);
@@ -98,8 +108,6 @@ void setup()
   pinMode(PIN_FLOW_SENSOR, INPUT);
   attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR, flowSensorPulseCounter, FALLING);
   sei();
-
-  httpServer.begin();
 
   ds18Sensors8.begin();
   ds18DeviceCount8 = ds18Sensors8.getDeviceCount();
@@ -185,7 +193,7 @@ String createDataString()
   resultData.concat(F("{"));
   resultData.concat(F("\n\"deviceId\":"));
 //  resultData.concat(String(DEVICE_ID));
-  resultData.concat(F("\"boiler-back\""));
+  resultData.concat(F("\"boiler-reserve\""));
   resultData.concat(F(","));
   resultData.concat(F("\n\"version\":"));
   resultData.concat(VERSION);
@@ -193,13 +201,13 @@ String createDataString()
   resultData.concat(F(","));
   resultData.concat(F("\n\"data\": {"));
 
-  resultData.concat(F("\n\t\"bb-trans-1\":"));
+  resultData.concat(F("\n\t\"br-trans-1\":"));
   resultData.concat(String((float)emon1.calcIrms(1480), 1));
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"bb-trans-2\":"));
+  resultData.concat(F("\n\t\"br-trans-2\":"));
   resultData.concat(String((float)emon2.calcIrms(1480), 1));
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"bb-trans-3\":"));
+  resultData.concat(F("\n\t\"br-trans-3\":"));
   resultData.concat(String((float)emon3.calcIrms(1480), 1));
   
   resultData.concat(F(","));
@@ -235,7 +243,7 @@ String createDataString()
     resultData.concat(F(","));
   }
   
-  resultData.concat(F("\n\t\"bb-flow\":"));
+  resultData.concat(F("\n\t\"br-flow\":"));
   resultData.concat(getFlowData());
   
   resultData.concat(F("\n\t }"));
